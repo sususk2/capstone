@@ -6,8 +6,10 @@
 //     ① 건강도 진단 '어디가 문제인가?' → ② 원인 분석 '왜 발생했는가?' → ③ 솔루션 제언 '어떻게 해결할까?'
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
 // AI 리포트(ai_report/models.py의 Report: diagnosis, causes, solutions)는 AiReportView에만 보여 준다 (결과 탭에는 없음, 팀 피드백).
+// 단, 전문가용 설명은 결과 자세히 창 맨 위(ExpertReport)에서 따로 만든다 (AI 리포트 창은 쉬운 설명)
 // 형식이 바뀌면 AiReportView를 고친다. 원인 분석 탭 그래프는 ProfileChart.jsx가 그린다 (전압 프로파일 + 선로 조류)
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createReport } from '../api/client.js'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
@@ -106,23 +108,13 @@ function FocusBtn({ id, onFocus, label }) {
 }
 
 function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeReport }) {
-  const [audience, setAudience] = useState('expert') // 해설 대상 (ai_report/report.py의 AUDIENCES)
   return (
     <div className="ai-box">
       <div className="ai-head">
         <b>{title}</b>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="seg">
-            {[['expert', '전문가용 설명'], ['plain', '쉬운 설명']].map(([v, label]) => (
-              <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
-                {label}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={() => onMakeReport(audience)}>
-            {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
-          </button>
-        </span>
+        <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={onMakeReport}>
+          {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
+        </button>
       </div>
       {report ? children : <p className="muted small">{reportMessage || 'LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 버튼을 누르면 ①②③ 해설이 한 번에 만들어집니다.'}</p>}
     </div>
@@ -394,6 +386,7 @@ export const RESULT_TABS = [
 export function ResultView({ graph, result, tab, onTab, history, historyNote, dailyNote, onFocus }) {
   return (
     <div className="rview">
+      <ExpertReport result={result} />
       <nav className="tabs">
         {RESULT_TABS.map(([k, label]) => (
           <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => onTab(k)}>
@@ -421,6 +414,64 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// 전문가용 AI 해설 (결과 자세히 창 맨 위). AI 리포트 창의 쉬운 설명과 판정·수치는 같고 용어 수준만 다르다 (ai_report/report.py의 system_prompt)
+// ponytail: 결과 자세히 창 안에서만 쓰니 상태를 App이 아니라 여기에 둔다. 결과가 바뀌면 지운다. 창을 닫았다 열어도 다시 만들어야 하면 App으로 올린다
+function ExpertReport({ result }) {
+  const [report, setReport] = useState(null)
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const current = useRef(result)
+  useEffect(() => {
+    current.current = result
+    setReport(null)
+    setMessage('')
+  }, [result])
+  if (!result) return null
+  async function make() {
+    const asked = result
+    setBusy(true)
+    setMessage('전문가용 설명 생성 중... (수 초~수십 초)')
+    try {
+      const r = await createReport(asked, 'expert')
+      if (current.current === asked) setReport(r)
+    } catch (e) {
+      if (current.current === asked) setMessage(`전문가용 설명 실패 (${e.message})`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="ai-box">
+      <div className="ai-head">
+        <b>전문가용 AI 해설</b>
+        <button type="button" className="mini primary-outline" disabled={busy} onClick={make}>
+          {busy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : '전문가용 설명'}
+        </button>
+      </div>
+      {report ? (
+        <>
+          <h4>① 건강도 진단</h4>
+          <p>{report.diagnosis}</p>
+          <h4>② 원인 분석</h4>
+          <ul>
+            {report.causes.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ul>
+          <h4>③ 솔루션 제언</h4>
+          <ol>
+            {report.solutions.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ol>
+        </>
+      ) : (
+        <p className="muted small">{message || '전문 용어와 수치로 진단·원인·솔루션을 설명합니다. 버튼을 누를 때만 만듭니다.'}</p>
+      )}
     </div>
   )
 }

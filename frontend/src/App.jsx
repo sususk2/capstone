@@ -298,13 +298,13 @@ export default function App() {
     onChange(updateSubstation(graph, { name }), '변전소 이름 변경')
   }
 
-  async function makeReport(audience) {
+  async function makeReport() {
     if (!result) return
     const id = runId.current
     setReportBusy(true)
     setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     try {
-      const r = await createReport(result, audience)
+      const r = await createReport(result, 'plain') // AI 리포트 창 = 쉬운 설명. 전문가용 설명은 결과 자세히 창(ResultPanel.jsx의 ExpertReport)
       if (id === runId.current) setReport(r)
     } catch (e) {
       if (id === runId.current) setReportMessage(`AI 리포트 실패 (${e.message})`)
