@@ -74,10 +74,10 @@ class ReportError(Exception):
     """리포트를 만들 수 없을 때 (키 없음, API 호출 실패, 응답 형식 오류, 수렴하지 않은 결과). 백엔드가 503으로 알린다."""
 
 
-# ponytail: 해설 대상은 두 가지(전문가용/쉬운 설명)고, 판정 기준·수치 규칙(_RULES)은 같고 말투와 용어 수준만 다르다.
-#   대상을 더 늘릴 때는 AUDIENCES와 _STYLE에 항목을 하나 더하고, 화면의 선택 버튼(ResultPanel.jsx의 ReportBox)도 같이 고친다
+# ponytail: 화면의 AI 리포트는 쉬운 설명 하나만 쓴다 (2026-10-26 결정, 선택 버튼 없앰). 전문가용 말투(_STYLE["expert"])는 지우지 않고 남겨 둔다.
+#   판정 기준·수치 규칙(_RULES)은 공통이고 말투만 다르다. 화면에서 다시 고르게 하려면 백엔드 /reports에 audience를 받아 generate_report로 넘긴다
 AUDIENCES = ("expert", "plain")  # expert = 전문가용 설명, plain = 쉬운 설명
-DEFAULT_AUDIENCE = "expert"
+DEFAULT_AUDIENCE = "plain"
 
 _INTRO = "당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계통 엔지니어입니다."
 
@@ -145,8 +145,8 @@ def system_prompt(audience: str = DEFAULT_AUDIENCE) -> str:
     return f"{_INTRO}\n\n{_STYLE[audience]}\n\n{_RULES}"
 
 
-SYSTEM_PROMPT = system_prompt("expert")  # 기본(전문가용). 기존 코드·테스트가 쓰는 이름
-PLAIN_SYSTEM_PROMPT = system_prompt("plain")
+SYSTEM_PROMPT = system_prompt(DEFAULT_AUDIENCE)  # 기본(쉬운 설명). 기존 코드·테스트가 쓰는 이름
+EXPERT_SYSTEM_PROMPT = system_prompt("expert")
 
 REPORT_TOOL = {
     "name": TOOL_NAME,
@@ -404,7 +404,7 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
     """계통 정보(설비 이름·종류·연결)와 해석 수치(전압 pu, 선로 부하율, 고장전류, 역조류, 피더별 송출 전력)를
     구조화된 텍스트로 만들어 LLM에 넣고, 비전문가도 이해할 수 있는 3단계 리포트로 돌려받는다.
 
-    audience: "expert"(전문가용, 기본) 또는 "plain"(쉬운 설명). 판정과 수치는 같고 말투·용어 수준만 다르다.
+    audience: "plain"(쉬운 설명, 기본) 또는 "expert"(전문가용). 판정과 수치는 같고 말투·용어 수준만 다르다.
     client: 테스트용 (anthropic.Anthropic과 같은 messages.create를 가진 객체). 없으면 환경 변수로 만든다."""
     if not result.converged:
         raise ReportError("계산이 수렴하지 않은 결과로는 리포트를 만들 수 없습니다")
